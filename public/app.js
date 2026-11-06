@@ -13,6 +13,8 @@ let lastFocused = null;
 
 $('today').textContent = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date());
 const formatAmount = (cents) => (cents / 100).toFixed(2);
+const newReference = () => `SIM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+const referenceUrl = (reference) => `/explorer.html?id=${encodeURIComponent(reference)}`;
 function saveWallet() {
   try { localStorage.setItem(storageKey, JSON.stringify(wallet)); } catch (_) { /* The wallet still works for this session. */ }
 }
@@ -27,8 +29,9 @@ function renderActivity() {
   if (!wallet.activity.length) return;
   const latest = wallet.activity[0];
   list.className = 'activity-record';
-  list.innerHTML = `<div class="activity-leading"><div class="empty-icon"><svg class="icon"><use href="#arrow-up"/></svg></div><div class="activity-details"><strong>USDT withdrawal</strong><p>Polygon / Simulation</p>${latest.state === 'paid' && latest.address ? '<p class="activity-address" id="activityAddress"></p>' : ''}</div></div><div class="activity-result"><strong>${latest.state === 'paid' ? '-' : ''}${formatAmount(latest.amount)} USDT</strong><span class="result-badge ${latest.state}">${latest.state === 'paid' ? 'Paid' : 'Failed'}</span></div>`;
+  list.innerHTML = `<div class="activity-leading"><div class="empty-icon"><svg class="icon"><use href="#arrow-up"/></svg></div><div class="activity-details"><strong>USDT withdrawal</strong><p>Polygon / Simulation</p>${latest.state === 'paid' && latest.address ? '<p class="activity-address" id="activityAddress"></p>' : ''}${latest.state === 'paid' && latest.reference ? '<a class="transaction-link" id="activityReference">View simulated transaction</a>' : ''}</div></div><div class="activity-result"><strong>${latest.state === 'paid' ? '-' : ''}${formatAmount(latest.amount)} USDT</strong><span class="result-badge ${latest.state}">${latest.state === 'paid' ? 'Paid' : 'Failed'}</span></div>`;
   if (latest.state === 'paid' && latest.address) $('activityAddress').textContent = `To: ${latest.address}`;
+  if (latest.state === 'paid' && latest.reference) $('activityReference').href = referenceUrl(latest.reference);
 }
 function openModal() {
   lastFocused = document.activeElement;
@@ -48,8 +51,11 @@ function updateStatus() {
   const remaining = Math.max(0, Math.ceil((withdrawal.endsAt - Date.now()) / 1000));
   if (remaining === 0 && withdrawal.state === 'pending') {
     withdrawal.state = withdrawal.outcome;
-    if (withdrawal.state === 'paid') wallet.balance = Math.max(0, wallet.balance - withdrawal.amount);
-    wallet.activity.unshift({ state: withdrawal.state, amount: withdrawal.amount, address: withdrawal.address });
+    if (withdrawal.state === 'paid') {
+      wallet.balance = Math.max(0, wallet.balance - withdrawal.amount);
+      withdrawal.reference = newReference();
+    }
+    wallet.activity.unshift({ state: withdrawal.state, amount: withdrawal.amount, address: withdrawal.address, reference: withdrawal.reference });
     wallet.activity = wallet.activity.slice(0, 20);
     saveWallet();
     renderBalance();
@@ -77,8 +83,12 @@ function renderWithdrawal() {
   }
   if (withdrawal && withdrawal.state !== 'pending') {
     const paid = withdrawal.state === 'paid';
-    modalContent.innerHTML = `<div class="progress-view"><div class="progress-icon ${paid ? '' : 'error-icon'}">${paid ? '<svg class="icon"><use href="#check"/></svg>' : '!'}</div><div class="modal-kicker">SIMULATION COMPLETE</div><h2 id="modalTitle">${paid ? 'Paid' : 'Wrong address'}</h2><p>${paid ? `${formatAmount(withdrawal.amount)} USDT was deducted from your balance.` : 'The withdrawal failed. Your balance remains unchanged.'}</p>${paid && withdrawal.address ? '<div class="recipient-details"><span>Recipient address</span><strong id="paidAddress"></strong></div>' : ''}<button class="button modal-submit" id="tryAgain">New withdrawal</button></div>`;
+    modalContent.innerHTML = `<div class="progress-view"><div class="progress-icon ${paid ? '' : 'error-icon'}">${paid ? '<svg class="icon"><use href="#check"/></svg>' : '!'}</div><div class="modal-kicker">SIMULATION COMPLETE</div><h2 id="modalTitle">${paid ? 'Paid' : 'Wrong address'}</h2><p>${paid ? `${formatAmount(withdrawal.amount)} USDT was deducted from your balance.` : 'The withdrawal failed. Your balance remains unchanged.'}</p>${paid && withdrawal.address ? '<div class="recipient-details"><span>Recipient address</span><strong id="paidAddress"></strong></div>' : ''}${paid && withdrawal.reference ? '<div class="recipient-details"><span>Simulated transaction ID</span><strong id="paidReference"></strong><a class="transaction-link" id="paidReferenceLink">View simulated transaction</a></div>' : ''}<button class="button modal-submit" id="tryAgain">New withdrawal</button></div>`;
     if (paid && withdrawal.address) $('paidAddress').textContent = withdrawal.address;
+    if (paid && withdrawal.reference) {
+      $('paidReference').textContent = withdrawal.reference;
+      $('paidReferenceLink').href = referenceUrl(withdrawal.reference);
+    }
     $('tryAgain').addEventListener('click', () => { wallet.withdrawal = null; saveWallet(); banner.classList.add('hidden'); renderWithdrawal(); });
     return;
   }
