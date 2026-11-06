@@ -13,4 +13,4 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
     res.end(data);
   });
-}).listen(6868, '0.0.0.0', () => console.log('Wallet demo running on port 6868'));
+}).listen(6546, '0.0.0.0', () => console.log('Wallet running on port 6546'));
