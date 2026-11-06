@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f7f8f6">
+  <title>Transaction details - Vaultly</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="explorer-body">
+  <header class="explorer-header"><a class="explorer-brand" href="/">vaultly<span>.</span></a><span class="demo-pill"><i></i> Simulation</span></header>
+  <main class="explorer-main">
+    <a class="back-link" href="/">&larr; Back to wallet</a>
+    <div class="explorer-heading"><div><div class="section-kicker">WALLET ACTIVITY</div><h1>Transaction details</h1><p>View the details of this simulated withdrawal.</p></div><span class="explorer-badge">Simulation</span></div>
+    <section class="explorer-panel" aria-labelledby="details-title">
+      <h2 id="details-title">Overview</h2>
+      <div id="transactionDetails" class="transaction-details" hidden>
+        <div class="detail-row"><span>Simulated transaction ID</span><strong id="reference"></strong></div>
+        <div class="detail-row"><span>Status</span><strong class="detail-status">Paid (simulated)</strong></div>
+        <div class="detail-row"><span>Network</span><strong>Polygon</strong></div>
+        <div class="detail-row"><span>Asset</span><strong>USDT</strong></div>
+        <div class="detail-row"><span>Amount</span><strong id="transactionAmount"></strong></div>
+        <div class="detail-row"><span>Recipient</span><strong id="recipient"></strong></div>
+      </div>
+      <p class="explorer-message" id="message">Looking up transaction...</p>
+    </section>
+    <p class="explorer-disclaimer">This is a local simulation, not a blockchain explorer. Transaction details are stored in this browser and cannot be verified on-chain.</p>
+  </main>
+  <script src="/explorer.js"></script>
+</body>
+</html>
