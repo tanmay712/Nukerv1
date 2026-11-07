@@ -1,0 +1,5 @@
+# Point the domain to this server and allow inbound ports 80 and 443.
+# Caddy obtains and renews the HTTPS certificate automatically.
+crypto.definescloud.site {
+    reverse_proxy 127.0.0.1:{$APP_PORT:6546}
+}
