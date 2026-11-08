@@ -21,3 +21,17 @@ test('website and dashboard motion respects reduced-motion preferences', () => {
     assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   }
 });
+
+test('interface palette is neutral apart from provider branding and error messaging', () => {
+  const exceptions = new Set(['4285f4', '5865f2', 'fff3ee', 'aa6e57']);
+  for (const file of ['website.css', 'style.css']) {
+    const css = publicFile(file);
+    for (const [, color] of css.matchAll(/#([0-9a-f]{6})(?:[0-9a-f]{2})?\b/gi)) {
+      const rgb = color.toLowerCase();
+      if (exceptions.has(rgb)) continue;
+      assert.equal(rgb.slice(0, 2), rgb.slice(2, 4), `${file}: #${rgb} is not neutral`);
+      assert.equal(rgb.slice(2, 4), rgb.slice(4, 6), `${file}: #${rgb} is not neutral`);
+    }
+  }
+  assert.match(publicFile('website.css'), /\.hero-visual img,\.auth-art img\s*\{filter:grayscale\(1\)\}/);
+});
