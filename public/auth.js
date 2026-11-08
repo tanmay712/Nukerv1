@@ -3,7 +3,7 @@ const signup = location.pathname.replace(/\/$/, '') === '/signup';
 $('authTitle').textContent = signup ? 'Make yourself at home.' : 'Welcome back.';
 $('authSubtitle').textContent = signup ? 'Create your account to get started.' : 'Sign in to pick up where you left off.';
 $('switchText').textContent = signup ? 'Already have an account?' : 'New to Cryptly?';
-$('switchLink').textContent = signup ? 'Log in →' : 'Create an account →';
+$('switchLink').textContent = signup ? 'Log in' : 'Create an account';
 $('switchLink').href = signup ? '/signin' : '/signup';
 document.title = `${signup ? 'Get started' : 'Log in'} | Cryptly`;
 if (new URLSearchParams(location.search).has('login')) { $('authError').textContent = 'Sign-in could not be completed. Please try again.'; $('authError').classList.remove('hidden'); }
