@@ -71,7 +71,7 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHea
 app.use('/auth', authLimiter);
 for (const [provider, enabled] of [['google', googleEnabled], ['discord', discordEnabled]]) {
   app.get(`/auth/${provider}`, (req, res, next) => enabled ? passport.authenticate(provider, provider === 'google' ? { scope: ['profile', 'email'] } : {})(req, res, next) : res.status(503).send('This sign-in provider has not been configured.'));
-  app.get(`/auth/${provider}/callback`, (req, res, next) => enabled ? passport.authenticate(provider, { failureRedirect: '/?login=failed' })(req, res, next) : res.status(503).send('This sign-in provider has not been configured.'), (req, res) => { const user = db.prepare('SELECT provider, email FROM users WHERE id = ?').get(req.user.id); const ownerEmail = db.prepare("SELECT value FROM settings WHERE key = 'notification_email'").get()?.value; if (user) mail.notifyLogin(user, ownerEmail).catch(() => console.error('Sign-in notification failed.')); res.redirect('/'); });
+  app.get(`/auth/${provider}/callback`, (req, res, next) => enabled ? passport.authenticate(provider, { failureRedirect: '/signin?login=failed' })(req, res, next) : res.status(503).send('This sign-in provider has not been configured.'), (req, res) => { const user = db.prepare('SELECT provider, email FROM users WHERE id = ?').get(req.user.id); const ownerEmail = db.prepare("SELECT value FROM settings WHERE key = 'notification_email'").get()?.value; if (user) mail.notifyLogin(user, ownerEmail).catch(() => console.error('Sign-in notification failed.')); res.redirect('/dashboard'); });
 }
 const isOwner = (user) => Boolean(user && user.provider === 'discord' && /^\d{5,25}$/.test(process.env.OWNER_DISCORD_ID || '') && user.provider_id === process.env.OWNER_DISCORD_ID);
 const requireUser = (req, res, next) => req.user ? next() : res.status(401).json({ error: 'Sign in required.' });
@@ -91,7 +91,7 @@ app.get('/api/admin', requireUser, requireOwner, (_req, res) => {
   const users = db.prepare('SELECT provider, name, email, created_at, last_login FROM users ORDER BY last_login DESC LIMIT 100').all();
   const settings = db.prepare("SELECT value FROM settings WHERE key = 'support_email'").get();
   const notifications = db.prepare("SELECT value FROM settings WHERE key = 'notification_email'").get();
-  res.json({ users, supportEmail: settings?.value || '', notificationEmail: notifications?.value || '', mailConfigured: mail.mailConfigured(), primeConfigured: primeConfigured() });
+  res.json({ users, supportEmail: settings?.value || '', notificationEmail: notifications?.value || '', mailConfigured: mail.mailConfigured(), primeConfigured: primeConfigured(), primeAssetsConfigured: primeAssetsConfigured() });
 });
 app.post('/api/admin/settings', requireUser, requireOwner, csrf, (req, res) => {
   const supportEmail = typeof req.body?.supportEmail === 'string' ? req.body.supportEmail.trim() : '';
@@ -108,12 +108,14 @@ app.post('/api/admin/email/test', requireUser, requireOwner, csrf, emailLimiter,
   const email = db.prepare("SELECT value FROM settings WHERE key = 'notification_email'").get()?.value;
   if (!mail.mailConfigured()) return res.status(503).json({ error: 'SMTP is not configured.' });
   if (!mail.isEmail(email)) return res.status(400).json({ error: 'Save an owner notification email first.' });
-  try { await mail.sendMail(email, 'Vaultly email test', 'Your Vaultly SMTP connection accepted this test message.\n'); res.json({ ok: true }); }
+  try { await mail.sendMail(email, 'Cryptly email test', 'Your Cryptly SMTP connection accepted this test message.\n'); res.json({ ok: true }); }
   catch (_) { console.error('SMTP test email failed.'); res.status(502).json({ error: 'Email delivery failed. Check the SMTP configuration.' }); }
 });
-function primeConfigured() { return Boolean(process.env.COINBASE_PRIME_ACCESS_KEY && process.env.COINBASE_PRIME_SIGNING_KEY && process.env.COINBASE_PRIME_PASSPHRASE && /^[a-f0-9-]{36}$/i.test(process.env.COINBASE_PRIME_PORTFOLIO_ID || '')); }
-async function primeGet(endpoint) {
-  const requestPath = `/v1/portfolios/${process.env.COINBASE_PRIME_PORTFOLIO_ID}/${endpoint}`;
+const isPrimeId = (value) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value || '');
+function primeAuthConfigured() { return Boolean(process.env.COINBASE_PRIME_ACCESS_KEY && process.env.COINBASE_PRIME_SIGNING_KEY && process.env.COINBASE_PRIME_PASSPHRASE); }
+function primeConfigured() { return primeAuthConfigured() && isPrimeId(process.env.COINBASE_PRIME_PORTFOLIO_ID); }
+function primeAssetsConfigured() { return primeAuthConfigured() && isPrimeId(process.env.COINBASE_PRIME_ENTITY_ID); }
+async function primeGetPath(requestPath) {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature = crypto.createHmac('sha256', process.env.COINBASE_PRIME_SIGNING_KEY).update(`${timestamp}GET${requestPath}`).digest('base64');
   const response = await fetch(`https://api.prime.coinbase.com${requestPath}`, { headers: { 'X-CB-ACCESS-KEY': process.env.COINBASE_PRIME_ACCESS_KEY, 'X-CB-ACCESS-PASSPHRASE': process.env.COINBASE_PRIME_PASSPHRASE, 'X-CB-ACCESS-SIGNATURE': signature, 'X-CB-ACCESS-TIMESTAMP': timestamp, Accept: 'application/json' }, signal: AbortSignal.timeout(10000), redirect: 'error' });
@@ -123,10 +125,36 @@ async function primeGet(endpoint) {
 app.get('/api/admin/prime', requireUser, requireOwner, async (_req, res) => {
   if (!primeConfigured()) return res.status(503).json({ error: 'Coinbase Prime is not configured.' });
   try {
-    const [balances, wallets] = await Promise.all([primeGet('balances'), primeGet('wallets')]);
+    const portfolioPath = `/v1/portfolios/${process.env.COINBASE_PRIME_PORTFOLIO_ID}`;
+    const [balances, wallets] = await Promise.all([primeGetPath(`${portfolioPath}/balances`), primeGetPath(`${portfolioPath}/wallets`)]);
     // Return only fields needed by the owner dashboard, never API credentials.
     res.json({ balances: Array.isArray(balances.balances) ? balances.balances.map(({ symbol, amount, withdrawable_amount }) => ({ symbol, amount, withdrawable_amount })) : [], wallets: Array.isArray(wallets.wallets) ? wallets.wallets.map(({ id, name, symbol, type, primary_address }) => ({ id, name, symbol, type, primary_address })) : [], pagination: wallets.pagination || null });
   } catch (_) { res.status(502).json({ error: 'Unable to retrieve Coinbase Prime data. Check server configuration and provider availability.' }); }
+});
+
+// Read-only provider metadata. Presence in this list does not enable custody, deposits or withdrawals.
+app.get('/api/admin/prime/assets', requireUser, requireOwner, async (_req, res) => {
+  if (!primeAssetsConfigured()) return res.status(503).json({ error: 'Coinbase Prime entity and read-only credentials are not configured.' });
+  try {
+    const response = await primeGetPath(`/v1/entities/${process.env.COINBASE_PRIME_ENTITY_ID}/assets`);
+    if (!Array.isArray(response.assets)) throw new Error('Unexpected Prime asset response');
+    const wanted = new Set(['SOL', 'LTC', 'USDT']);
+    const assets = response.assets.filter((asset) => typeof asset?.symbol === 'string' && wanted.has(asset.symbol.toUpperCase())).map((asset) => ({
+      symbol: asset.symbol,
+      name: typeof asset.name === 'string' ? asset.name : '',
+      decimalPrecision: typeof asset.decimal_precision === 'string' ? asset.decimal_precision : null,
+      networks: Array.isArray(asset.networks) ? asset.networks.map((entry) => ({
+        name: typeof entry?.name === 'string' ? entry.name : '',
+        networkId: typeof entry?.network?.id === 'string' ? entry.network.id : null,
+        networkType: typeof entry?.network?.type === 'string' ? entry.network.type : null,
+        scopedSymbol: typeof entry?.network_scoped_symbol === 'string' ? entry.network_scoped_symbol : null,
+        tradingSupported: typeof entry?.trading_supported === 'boolean' ? entry.trading_supported : null,
+        vaultSupported: typeof entry?.vault_supported === 'boolean' ? entry.vault_supported : null,
+        custodySupported: typeof entry?.prime_custody_supported === 'boolean' ? entry.prime_custody_supported : null,
+      })) : [],
+    }));
+    res.json({ assets });
+  } catch (_) { res.status(502).json({ error: 'Unable to retrieve Coinbase Prime asset metadata. Check configuration and provider availability.' }); }
 });
 
 // Giveaway prizes are recorded for manual fulfillment only; no customer or owner balance is changed.
@@ -189,7 +217,7 @@ app.post('/api/admin/giveaways/:id/draw', requireUser, requireOwner, csrf, givea
     const message = `You were selected for ${giveaway.title}: ${giveaway.prize} LTC. Prize fulfillment is pending; no payment has been sent.`;
     db.prepare("UPDATE giveaways SET state = 'drawn', winner_id = ? WHERE id = ?").run(winner.id, giveaway.id);
     db.prepare('INSERT INTO notifications (id, user_id, message, created_at) VALUES (?, ?, ?, ?)').run(crypto.randomUUID(), winner.id, message, Date.now());
-    if (mail.isEmail(winner.email)) { db.prepare('INSERT INTO email_outbox (id, recipient, subject, body, next_attempt, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), winner.email, 'Vaultly giveaway result', `${message}\n\nSign in to your dashboard for details.\n`, Date.now(), Date.now()); emailQueued = true; }
+    if (mail.isEmail(winner.email)) { db.prepare('INSERT INTO email_outbox (id, recipient, subject, body, next_attempt, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), winner.email, 'Cryptly giveaway result', `${message}\n\nSign in to your dashboard for details.\n`, Date.now(), Date.now()); emailQueued = true; }
     db.exec('COMMIT');
   } catch (error) { try { db.exec('ROLLBACK'); } catch (_) {} return next(error); }
   if (emailQueued) processEmailQueue().catch(() => console.error('Giveaway email queue failed.'));
@@ -219,13 +247,15 @@ async function processEmailQueue() {
     }
   } finally { processingEmail = false; }
 }
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'landing.html')));
+for (const route of ['/signin', '/signup']) app.get(route, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'auth.html')));
 for (const route of ['/dashboard', '/withdraw', '/giveaways', '/buy', '/owner']) app.get(route, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], index: 'index.html', dotfiles: 'deny' }));
 app.use((err, _req, res, _next) => { console.error('Request failed:', err.message); res.status(500).json({ error: 'Request failed.' }); });
 if (require.main === module) {
   const port = Number(process.env.PORT || 6546);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be an integer between 1 and 65535');
-  app.listen(port, '0.0.0.0', () => console.log(`Vaultly listening on port ${port}`));
+  app.listen(port, '0.0.0.0', () => console.log(`Cryptly listening on port ${port}`));
   processEmailQueue().catch(() => console.error('Giveaway email queue failed.'));
   setInterval(() => processEmailQueue().catch(() => console.error('Giveaway email queue failed.')), 60000).unref();
 }

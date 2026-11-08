@@ -1,0 +1,13 @@
+# Legacy Railway config-as-code. New Railway services must configure these
+# settings in the dashboard or migrate to Railway's supported IaC workflow.
+# No secrets belong in this file; use Railway service variables.
+[build]
+builder = "RAILPACK"
+buildCommand = "npm ci"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

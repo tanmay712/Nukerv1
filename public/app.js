@@ -30,6 +30,7 @@ async function loadOwner() {
     $('testEmail').disabled = !data.mailConfigured;
     $('primeStatus').textContent = data.primeConfigured ? 'API credentials are configured. Portfolio access is read-only.' : 'Add read-only API credentials in your server configuration.';
     $('loadPrime').disabled = !data.primeConfigured;
+    $('loadPrimeAssets').disabled = !data.primeAssetsConfigured;
     const list = $('usersList'); list.replaceChildren();
     if (!data.users.length) showText(list, 'No sign-ins yet.');
     data.users.forEach((user) => row(list, user.name, `${user.provider} / ${new Date(user.last_login).toLocaleDateString()}`));
@@ -106,11 +107,6 @@ async function loadAdminGiveaways() {
 async function loadSession() {
   try {
     const data = await jsonRequest('/api/session');
-    for (const provider of ['google', 'discord']) {
-      const link = $(`${provider}Login`);
-      if (!data.providers[provider]) { link.classList.add('disabled'); link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true'); }
-    }
-    if (!data.providers.google && !data.providers.discord) $('providerNotice').textContent = 'Sign-in is not configured yet. See the server setup instructions.';
     if (!data.user) return;
     currentUser = data.user; csrfToken = data.csrf;
     $('loginPanel').classList.add('hidden'); $('logout').classList.remove('hidden');
@@ -143,6 +139,20 @@ $('testEmail').addEventListener('click', async () => {
   try { await post('/api/admin/email/test'); $('mailTestStatus').textContent = 'Test accepted by the mail server. Check your inbox.'; }
   catch (error) { $('mailTestStatus').textContent = error.message; }
   finally { button.disabled = false; }
+});
+$('loadPrimeAssets').addEventListener('click', async () => {
+  const list = $('primeAssetData'); showText(list, 'Loading provider metadata...');
+  try {
+    const data = await jsonRequest('/api/admin/prime/assets'); list.replaceChildren();
+    if (!data.assets.length) return showText(list, 'No requested assets were returned by the provider.');
+    data.assets.forEach((asset) => {
+      if (!asset.networks.length) return row(list, asset.symbol, 'Network metadata not returned');
+      asset.networks.forEach((network) => {
+        const statuses = [`Trading: ${network.tradingSupported === null ? 'unknown' : network.tradingSupported ? 'yes' : 'no'}`, `Vault: ${network.vaultSupported === null ? 'unknown' : network.vaultSupported ? 'yes' : 'no'}`, `Prime custody: ${network.custodySupported === null ? 'unknown' : network.custodySupported ? 'yes' : 'no'}`];
+        row(list, `${asset.symbol} / ${network.name || network.networkType || 'Network unspecified'}`, statuses.join(' · '));
+      });
+    });
+  } catch (error) { showText(list, error.message); }
 });
 $('loadPrime').addEventListener('click', async () => {
   const list = $('primeData'); showText(list, 'Loading portfolio...');
