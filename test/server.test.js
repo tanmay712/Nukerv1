@@ -181,3 +181,55 @@ test('giveaway winner email outbox delivers pending messages and retries failure
     for (const key of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'MAIL_FROM']) delete process.env[key];
   }
 });
+test('landing and separate account pages link to the configured OAuth flow', async () => {
+  const home = await request(app).get('/');
+  assert.equal(home.status, 200);
+  assert.match(home.text, /href="\/signup"/);
+  assert.match(home.text, /href="\/signin"/);
+  assert.match(home.text, /href="\/dashboard"/);
+  for (const route of ['/signin', '/signup']) {
+    const response = await request(app).get(route);
+    assert.equal(response.status, 200);
+    assert.match(response.text, /auth\.js/);
+    assert.match(response.text, /Continue with Google/);
+    assert.match(response.text, /Continue with Discord/);
+    assert.doesNotMatch(response.text, /type="password"/);
+  }
+  assert.equal((await request(app).get('/dashboard')).status, 200);
+});
+test('Prime asset metadata is owner-only, read-only and fails closed without configuration', async () => {
+  const owner = login('discord', process.env.OWNER_DISCORD_ID);
+  const other = login('discord', '999999999999999999');
+  assert.equal((await request(app).get('/api/admin/prime/assets')).status, 401);
+  assert.equal((await request(app).get('/api/admin/prime/assets').set('Cookie', other)).status, 403);
+  assert.equal((await request(app).get('/api/admin/prime/assets').set('Cookie', owner)).status, 503);
+  const original = global.fetch;
+  Object.assign(process.env, { COINBASE_PRIME_ACCESS_KEY:'read-key', COINBASE_PRIME_SIGNING_KEY:'secret', COINBASE_PRIME_PASSPHRASE:'pass', COINBASE_PRIME_ENTITY_ID:'12345678-1234-1234-1234-123456789abc' });
+  let calls = 0;
+  global.fetch = async (url, options) => {
+    calls++;
+    assert.equal(url, 'https://api.prime.coinbase.com/v1/entities/12345678-1234-1234-1234-123456789abc/assets');
+    const crypto = require('node:crypto');
+    assert.equal(options.headers['X-CB-ACCESS-SIGNATURE'], crypto.createHmac('sha256','secret').update(`${options.headers['X-CB-ACCESS-TIMESTAMP']}GET/v1/entities/12345678-1234-1234-1234-123456789abc/assets`).digest('base64'));
+    return { ok:true, json:async () => ({assets:[{symbol:'SOL',name:'Solana',networks:[{name:'Solana',network:{id:'solana',type:'MAINNET'},vault_supported:true,prime_custody_supported:false,extra:'omit'}]},{symbol:'USDT',name:'Tether',networks:[]},{symbol:'BTC',name:'Bitcoin'}]}) };
+  };
+  try {
+    assert.equal((await request(app).get('/api/admin/prime/assets').set('Cookie', other)).status, 403);
+    assert.equal(calls, 0);
+    const response = await request(app).get('/api/admin/prime/assets').set('Cookie', owner);
+    assert.equal(response.status, 200); assert.equal(calls, 1);
+    assert.deepEqual(response.body.assets.map(x => x.symbol), ['SOL','USDT']);
+    assert.equal(response.body.assets[0].networks[0].vaultSupported, true);
+    assert.equal(response.body.assets[0].networks[0].custodySupported, false);
+    assert.equal(response.body.assets[0].networks[0].tradingSupported, null);
+    assert.equal(response.body.assets[0].networks[0].extra, undefined);
+    assert(!JSON.stringify(response.body).includes('secret'));
+    global.fetch = async () => ({ ok: true, json: async () => ({ error: 'bad format' }) });
+    assert.equal((await request(app).get('/api/admin/prime/assets').set('Cookie', owner)).status, 502);
+    process.env.COINBASE_PRIME_ENTITY_ID = '../invalid';
+    assert.equal((await request(app).get('/api/admin/prime/assets').set('Cookie', owner)).status, 503);
+  } finally {
+    global.fetch = original;
+    for (const key of ['COINBASE_PRIME_ACCESS_KEY', 'COINBASE_PRIME_SIGNING_KEY', 'COINBASE_PRIME_PASSPHRASE', 'COINBASE_PRIME_ENTITY_ID']) delete process.env[key];
+  }
+});
