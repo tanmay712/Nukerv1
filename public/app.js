@@ -149,7 +149,7 @@ $('loadPrimeAssets').addEventListener('click', async () => {
       if (!asset.networks.length) return row(list, asset.symbol, 'Network metadata not returned');
       asset.networks.forEach((network) => {
         const statuses = [`Trading: ${network.tradingSupported === null ? 'unknown' : network.tradingSupported ? 'yes' : 'no'}`, `Vault: ${network.vaultSupported === null ? 'unknown' : network.vaultSupported ? 'yes' : 'no'}`, `Prime custody: ${network.custodySupported === null ? 'unknown' : network.custodySupported ? 'yes' : 'no'}`];
-        row(list, `${asset.symbol} / ${network.name || network.networkType || 'Network unspecified'}`, statuses.join(' · '));
+        row(list, `${asset.symbol} / ${network.name || network.networkType || 'Network unspecified'}`, statuses.join(' / '));
       });
     });
   } catch (error) { showText(list, error.message); }
