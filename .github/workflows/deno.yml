@@ -23,5 +23,11 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name cryply-test-mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          node scripts/init-test-mongo.js
       - name: Run tests
+        env:
+          MONGO_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
         run: npm test
