@@ -28,14 +28,13 @@ async function loadOwner() {
     $('notificationEmail').value = data.notificationEmail;
     $('mailStatus').textContent = data.mailConfigured ? 'SMTP settings are configured. Send a test to verify delivery.' : 'Configure SMTP on the server to enable email delivery.';
     $('testEmail').disabled = !data.mailConfigured;
-    $('primeStatus').textContent = data.primeConfigured ? 'API credentials are configured. Portfolio access is read-only.' : 'Add read-only API credentials in your server configuration.';
-    $('loadPrime').disabled = !data.primeConfigured;
-    $('loadPrimeAssets').disabled = !data.primeAssetsConfigured;
+    $('tatumStatus').textContent = data.tatumConfigured ? 'API key configured. Check the Solana devnet connection.' : 'Add a Tatum API key in the server configuration.';
+    $('checkTatum').disabled = !data.tatumConfigured;
     const list = $('usersList'); list.replaceChildren();
     if (!data.users.length) showText(list, 'No sign-ins yet.');
     data.users.forEach((user) => row(list, user.name, `${user.provider} / ${new Date(user.last_login).toLocaleDateString()}`));
     await loadAdminGiveaways();
-  } catch (error) { $('primeStatus').textContent = error.message; }
+  } catch (error) { $('tatumStatus').textContent = error.message; }
 }
 async function loadNotifications() {
   const list = $('notifications');
@@ -140,28 +139,10 @@ $('testEmail').addEventListener('click', async () => {
   catch (error) { $('mailTestStatus').textContent = error.message; }
   finally { button.disabled = false; }
 });
-$('loadPrimeAssets').addEventListener('click', async () => {
-  const list = $('primeAssetData'); showText(list, 'Loading provider metadata...');
-  try {
-    const data = await jsonRequest('/api/admin/prime/assets'); list.replaceChildren();
-    if (!data.assets.length) return showText(list, 'No requested assets were returned by the provider.');
-    data.assets.forEach((asset) => {
-      if (!asset.networks.length) return row(list, asset.symbol, 'Network metadata not returned');
-      asset.networks.forEach((network) => {
-        const statuses = [`Trading: ${network.tradingSupported === null ? 'unknown' : network.tradingSupported ? 'yes' : 'no'}`, `Vault: ${network.vaultSupported === null ? 'unknown' : network.vaultSupported ? 'yes' : 'no'}`, `Prime custody: ${network.custodySupported === null ? 'unknown' : network.custodySupported ? 'yes' : 'no'}`];
-        row(list, `${asset.symbol} / ${network.name || network.networkType || 'Network unspecified'}`, statuses.join(' / '));
-      });
-    });
-  } catch (error) { showText(list, error.message); }
-});
-$('loadPrime').addEventListener('click', async () => {
-  const list = $('primeData'); showText(list, 'Loading portfolio...');
-  try {
-    const data = await jsonRequest('/api/admin/prime'); list.replaceChildren();
-    if (!data.balances.length && !data.wallets.length) return showText(list, 'No balances or wallets returned for this portfolio.');
-    data.balances.forEach((balance) => row(list, `${balance.symbol || 'Asset'} balance`, String(balance.amount ?? 'Unavailable')));
-    data.wallets.forEach((wallet) => row(list, wallet.name || wallet.symbol || 'Wallet', [wallet.type, wallet.primary_address || wallet.id].filter(Boolean).join(' / ')));
-    if (data.pagination?.has_next) row(list, 'Additional results', 'Only the first page is shown.');
-  } catch (error) { showText(list, error.message); }
+$('checkTatum').addEventListener('click', async () => {
+  const button = $('checkTatum'); button.disabled = true; $('tatumStatus').textContent = 'Checking Solana devnet...';
+  try { await post('/api/admin/tatum/check'); $('tatumStatus').textContent = 'Solana devnet connection successful. Wallets and transfers are not yet enabled.'; }
+  catch (error) { $('tatumStatus').textContent = error.message; }
+  finally { button.disabled = false; }
 });
 loadSession();

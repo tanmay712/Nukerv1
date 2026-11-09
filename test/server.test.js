@@ -233,3 +233,49 @@ test('Prime asset metadata is owner-only, read-only and fails closed without con
     for (const key of ['COINBASE_PRIME_ACCESS_KEY', 'COINBASE_PRIME_SIGNING_KEY', 'COINBASE_PRIME_PASSPHRASE', 'COINBASE_PRIME_ENTITY_ID']) delete process.env[key];
   }
 });
+
+test('Tatum devnet check is owner-only, requires CSRF and fails closed when unconfigured', async () => {
+  delete process.env.TATUM_API_KEY;
+  const owner = login('discord', process.env.OWNER_DISCORD_ID);
+  const other = login('google', 'tatum-nonowner');
+  assert.equal((await request(app).post('/api/admin/tatum/check')).status, 401);
+  assert.equal((await request(app).post('/api/admin/tatum/check').set('Cookie', other).set('x-csrf-token', 'a'.repeat(64))).status, 403);
+  assert.equal((await request(app).post('/api/admin/tatum/check').set('Cookie', owner)).status, 403);
+  assert.equal((await request(app).post('/api/admin/tatum/check').set('Cookie', owner).set('x-csrf-token', 'a'.repeat(64))).status, 503);
+  assert.equal((await request(app).get('/api/admin').set('Cookie', owner)).body.tatumConfigured, false);
+});
+
+test('Tatum check uses a fixed devnet RPC and never exposes provider credentials or errors', async () => {
+  const original = global.fetch;
+  process.env.TATUM_API_KEY = 'sensitive-tatum-key';
+  const owner = login('discord', process.env.OWNER_DISCORD_ID);
+  try {
+    let calls = 0;
+    global.fetch = async (url, options) => {
+      calls++;
+      assert.equal(url, 'https://solana-devnet.gateway.tatum.io/');
+      assert.equal(options.method, 'POST');
+      assert.equal(options.headers['x-api-key'], 'sensitive-tatum-key');
+      assert.equal(options.redirect, 'error');
+      assert.deepEqual(JSON.parse(options.body), { jsonrpc: '2.0', id: 1, method: 'getHealth' });
+      return {ok: true, json: async () => ({jsonrpc:'2.0', id:1, result:'ok', secret:'sensitive-tatum-key'})};
+    };
+    const admin = await request(app).get('/api/admin').set('Cookie', owner);
+    assert.equal(admin.body.tatumConfigured, true);
+    assert.doesNotMatch(JSON.stringify(admin.body), /sensitive-tatum-key/);
+    const success = await request(app).post('/api/admin/tatum/check').set('Cookie', owner).set('x-csrf-token', 'a'.repeat(64)).send({url:'https://attacker.invalid'});
+    assert.equal(success.status, 200);
+    assert.deepEqual(success.body, {ok:true, network:'Solana devnet'});
+    assert.equal(calls, 1);
+    for (const fake of [
+      async () => ({ok:false}),
+      async () => ({ok:true, json:async () => ({jsonrpc:'2.0', id:1, error:{message:'sensitive-tatum-key'}})}),
+      async () => { throw new Error('sensitive-tatum-key'); },
+    ]) {
+      global.fetch = fake;
+      const failure = await request(app).post('/api/admin/tatum/check').set('Cookie', owner).set('x-csrf-token', 'a'.repeat(64));
+      assert.equal(failure.status, 502);
+      assert.doesNotMatch(JSON.stringify(failure.body), /sensitive-tatum-key/);
+    }
+  } finally { global.fetch = original; delete process.env.TATUM_API_KEY; }
+});
