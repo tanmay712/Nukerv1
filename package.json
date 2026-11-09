@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build:wallet": "esbuild wallet-prototype/browser.mjs --bundle --platform=browser --format=iife --minify --outfile=public/wallet-client.js"
   },
   "dependencies": {
+    "@tatumio/wallet-sdk": "0.7.1",
     "dotenv": "^17.4.2",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.3",
@@ -22,6 +24,7 @@
     "node": ">=22.5.0"
   },
   "devDependencies": {
+    "esbuild": "0.25.12",
     "supertest": "^7.3.2"
   }
 }

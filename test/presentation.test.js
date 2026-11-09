@@ -66,3 +66,16 @@ test('owner panel shows the test-only Tatum connection without promising live wa
   assert.doesNotMatch(html, /id="loadPrime"/);
   assert.match(publicFile('app.js'), /\/api\/admin\/tatum\/check/);
 });
+
+test('market workspace is navigable without simulated trading or prices', () => {
+  const html = publicFile('index.html'), js = publicFile('app.js'), landing = publicFile('landing.html');
+  for (const page of ['trade', 'swap', 'invest']) {
+    assert.match(html, new RegExp(`data-page="${page}"`));
+    assert.match(html, new RegExp(`data-nav="${page}"`));
+    assert.match(landing, new RegExp(`href="/${page}"`));
+  }
+  assert.match(html, /data-watch="SOL"[^>]*disabled/);
+  assert.match(html, /Swap unavailable/);
+  assert.match(html, /Place an order<\/button>/);
+  assert.match(js, /\/api\/watchlist/);
+});

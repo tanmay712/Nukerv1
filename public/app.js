@@ -1,10 +1,16 @@
 const $ = (id) => document.getElementById(id);
 let csrfToken = '';
 let currentUser = null;
-const page = ({ '/': 'dashboard', '/dashboard': 'dashboard', '/withdraw': 'withdraw', '/giveaways': 'giveaways', '/buy': 'buy', '/owner': 'owner' })[location.pathname] || 'dashboard';
-const pageLabels = { dashboard: 'Dashboard', withdraw: 'Withdraw', giveaways: 'Giveaways', buy: 'Buy crypto', owner: 'Owner panel' };
+const page = ({ '/': 'dashboard', '/dashboard': 'dashboard', '/withdraw': 'withdraw', '/giveaways': 'giveaways', '/buy': 'buy', '/owner': 'owner', '/trade': 'trade', '/swap': 'swap', '/invest': 'invest' })[location.pathname] || 'dashboard';
+const pageLabels = { dashboard: 'Dashboard', withdraw: 'Withdraw', giveaways: 'Giveaways', buy: 'Buy crypto', owner: 'Owner panel', trade: 'Markets', swap: 'Swap', invest: 'Invest' };
 document.querySelector(`[data-page="${page}"]`).classList.remove('hidden');
-document.querySelector(`[data-nav="${page}"]`)?.classList.add('active');
+const activeNav = document.querySelector(`[data-nav="${page}"]`);
+activeNav?.classList.add('active');
+if (activeNav) {
+  const nav = activeNav.parentElement;
+  const navRect = nav.getBoundingClientRect(), activeRect = activeNav.getBoundingClientRect();
+  if (activeRect.right > navRect.right) nav.scrollLeft += activeRect.left - navRect.left;
+}
 $('pageName').textContent = pageLabels[page];
 $('today').textContent = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date());
 async function jsonRequest(url, options = {}) {
@@ -103,11 +109,31 @@ async function loadAdminGiveaways() {
     data.giveaways.forEach((g) => list.append(giveawayCard(g, true)));
   } catch (error) { showText(list, error.message); }
 }
+async function loadWatchlist() {
+  const buttons = document.querySelectorAll('[data-watch]');
+  try {
+    const data = await jsonRequest('/api/watchlist');
+    buttons.forEach((button) => { const saved = data.assets.includes(button.dataset.watch); button.setAttribute('aria-pressed', String(saved)); button.textContent = saved ? 'Saved' : 'Add'; button.disabled = false; });
+    $('watchlistStatus').textContent = 'Your watchlist is saved to your account. Prices and trading are not connected.';
+  } catch (_) { $('watchlistStatus').textContent = 'Unable to load your watchlist. Please try again.'; }
+}
+document.querySelectorAll('[data-watch]').forEach(button => button.addEventListener('click', async () => {
+  if (!currentUser) return;
+  const saved = button.getAttribute('aria-pressed') !== 'true'; button.disabled = true;
+  try {
+    await post(`/api/watchlist/${encodeURIComponent(button.dataset.watch)}`, { saved });
+    button.setAttribute('aria-pressed', String(saved)); button.textContent = saved ? 'Saved' : 'Add';
+    $('watchlistStatus').textContent = saved ? `${button.dataset.watch} added to your watchlist.` : `${button.dataset.watch} removed from your watchlist.`;
+  } catch (_) { $('watchlistStatus').textContent = 'Unable to update your watchlist. Please try again.'; }
+  finally { button.disabled = false; }
+}));
+$('swapDirection').addEventListener('click', () => { const from = $('swapFrom'), to = $('swapTo'); const value = from.value; from.value = to.value; to.value = value; });
 async function loadSession() {
   try {
     const data = await jsonRequest('/api/session');
     if (!data.user) return;
     currentUser = data.user; csrfToken = data.csrf;
+    $('devnetCheck').disabled = false; $('devnetBalanceStatus').textContent = '';
     $('loginPanel').classList.add('hidden'); $('logout').classList.remove('hidden');
     $('greeting').textContent = `Welcome, ${data.user.name}`;
     $('profileName').textContent = data.user.name;
@@ -117,8 +143,18 @@ async function loadSession() {
     if (data.user.owner) { document.querySelectorAll('.owner-only').forEach(el => el.classList.remove('hidden')); $('ownerDenied').classList.add('hidden'); if (page === 'owner') await loadOwner(); }
     if (page === 'dashboard') await loadNotifications();
     if (page === 'giveaways') await loadGiveaways();
+    if (page === 'trade') await loadWatchlist();
   } catch (_) { $('notice').textContent = 'Unable to load account information. Please try again.'; }
 }
+$('devnetBalanceForm').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = $('devnetCheck'), input = $('devnetAddress'); button.disabled = true; input.disabled = true; $('devnetBalanceStatus').textContent = 'Checking Solana devnet...';
+  try {
+    const result = await post('/api/devnet/solana/balance', { address: input.value.trim() });
+    $('devnetBalanceStatus').textContent = `Address ${result.address}: ${result.balanceSol} test SOL on Solana devnet. This is not a mainnet balance.`;
+  } catch (error) { $('devnetBalanceStatus').textContent = error.message; }
+  finally { input.disabled = false; button.disabled = !currentUser; }
+});
 $('logout').addEventListener('click', async () => { try { await post('/api/logout'); window.location.assign('/dashboard'); } catch (error) { $('notice').textContent = error.message; } });
 $('settingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();

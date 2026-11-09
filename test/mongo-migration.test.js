@@ -20,6 +20,8 @@ test('SQLite migration reads a snapshot and maps application data without copyin
       CREATE TABLE notifications(id TEXT, user_id TEXT, message TEXT, created_at INTEGER, read_at INTEGER);
       CREATE TABLE email_outbox(id TEXT, recipient TEXT, subject TEXT, body TEXT, state TEXT, attempts INTEGER, next_attempt INTEGER, updated_at INTEGER);
       CREATE TABLE sessions(sid TEXT, data TEXT, expires INTEGER);
+      CREATE TABLE user_watchlist(user_id TEXT, symbol TEXT);
+      INSERT INTO user_watchlist VALUES('google:1','SOL');
       INSERT INTO users VALUES('google:1','google','1','Alice',NULL,'date','date');
       INSERT INTO settings VALUES('support_email','support@example.test');
       INSERT INTO giveaways VALUES('g','Prize','1','Free entry',100,'open',1,NULL);
@@ -31,6 +33,7 @@ test('SQLite migration reads a snapshot and maps application data without copyin
     const data = await readSqlite(file);
     const converted = toMongo(data);
     assert.equal(converted.users[0]._id, 'google:1');
+    assert.deepEqual(converted.users[0].watchlist, ['SOL']);
     assert.equal(converted.giveaways[0].entry_count, 1);
     assert.equal(converted.settings[0].supportEmail, 'support@example.test');
     assert.equal(converted.notifications[0]._id, 'n');
@@ -38,6 +41,9 @@ test('SQLite migration reads a snapshot and maps application data without copyin
     assert.equal(converted.sessions, undefined);
     assert.doesNotMatch(JSON.stringify(converted), /never copy/);
     assert.equal(fs.existsSync(file), true);
+    const oldDb = new DatabaseSync(file); oldDb.exec('DROP TABLE user_watchlist'); oldDb.close();
+    assert.deepEqual((await readSqlite(file)).watchlist, []);
+
     await assert.rejects(readSqlite(path.join(dir, 'missing.sqlite')), /existing SQLite file/);
   } finally { try { db.close(); } catch (_) {} fs.rmSync(dir, { recursive:true, force:true }); }
 });

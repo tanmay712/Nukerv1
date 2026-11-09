@@ -11,6 +11,7 @@ const { DatabaseSync } = require('node:sqlite');
 const fs = require('node:fs');
 const path = require('node:path');
 const mail = require('./mail');
+const { registerWatchlistRoutes } = require('./watchlist');
 
 const app = express();
 const production = process.env.NODE_ENV === 'production';
@@ -32,7 +33,7 @@ app.use(express.json({ limit: '8kb' }));
 const dbPath = process.env.DB_PATH || path.join(__dirname, 'data', 'wallet.sqlite');
 if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true, mode: 0o700 });
 const db = new DatabaseSync(dbPath);
-db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, provider TEXT NOT NULL, provider_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, created_at TEXT NOT NULL, last_login TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, data TEXT NOT NULL, expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, provider TEXT NOT NULL, provider_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, created_at TEXT NOT NULL, last_login TEXT NOT NULL); CREATE TABLE IF NOT EXISTS sessions (sid TEXT PRIMARY KEY, data TEXT NOT NULL, expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS user_watchlist (user_id TEXT NOT NULL REFERENCES users(id), symbol TEXT NOT NULL, PRIMARY KEY(user_id, symbol)); CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS giveaways (id TEXT PRIMARY KEY, title TEXT NOT NULL, prize TEXT NOT NULL, terms TEXT NOT NULL, ends_at INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'open', created_at INTEGER NOT NULL, winner_id TEXT REFERENCES users(id));
 CREATE TABLE IF NOT EXISTS giveaway_entries (giveaway_id TEXT NOT NULL REFERENCES giveaways(id), user_id TEXT NOT NULL REFERENCES users(id), created_at INTEGER NOT NULL, PRIMARY KEY (giveaway_id, user_id));
 CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), message TEXT NOT NULL, created_at INTEGER NOT NULL, read_at INTEGER);
@@ -85,6 +86,10 @@ function csrf(req, res, next) {
 app.get('/api/session', (req, res) => {
   if (req.user && !req.session.csrf) req.session.csrf = crypto.randomBytes(32).toString('hex');
   res.json({ user: req.user ? { name: req.user.name, provider: req.user.provider, owner: isOwner(req.user), verifiedEmail: mail.isEmail(req.user.email) } : null, csrf: req.user ? req.session.csrf : null, providers: { google: googleEnabled, discord: discordEnabled } });
+});
+registerWatchlistRoutes({ app, requireUser, csrf,
+  getWatchlist: async (id) => db.prepare('SELECT symbol FROM user_watchlist WHERE user_id = ?').all(id).map(row => row.symbol),
+  setWatchlist: async (id, symbol, saved) => { if (saved) db.prepare('INSERT OR IGNORE INTO user_watchlist(user_id, symbol) VALUES (?, ?)').run(id, symbol); else db.prepare('DELETE FROM user_watchlist WHERE user_id = ? AND symbol = ?').run(id, symbol); },
 });
 app.post('/api/logout', requireUser, csrf, (req, res, next) => req.logout((err) => { if (err) return next(err); req.session.destroy(() => { res.clearCookie('vaultly.sid', { path: '/' }); res.json({ ok: true }); }); }));
 app.get('/api/admin', requireUser, requireOwner, (_req, res) => {
@@ -267,7 +272,7 @@ async function processEmailQueue() {
 }
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'landing.html')));
 for (const route of ['/signin', '/signup']) app.get(route, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'auth.html')));
-for (const route of ['/dashboard', '/withdraw', '/giveaways', '/buy', '/owner']) app.get(route, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+for (const route of ['/dashboard', '/withdraw', '/giveaways', '/buy', '/owner', '/trade', '/swap', '/invest']) app.get(route, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], index: 'index.html', dotfiles: 'deny' }));
 app.use((err, _req, res, _next) => { console.error('Request failed:', err.message); res.status(500).json({ error: 'Request failed.' }); });
 function startServer() {

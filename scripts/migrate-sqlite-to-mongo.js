@@ -12,7 +12,8 @@ async function readSqlite(file) {
   try {
     source.exec('BEGIN');
     const read = (table) => source.prepare(`SELECT * FROM ${table}`).all().map(row => ({ ...row }));
-    const data = { users: read('users'), settings: read('settings'), giveaways: read('giveaways'), entries: read('giveaway_entries'), notifications: read('notifications'), outbox: read('email_outbox') };
+    const hasWatchlist = source.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'user_watchlist'").get();
+    const data = { watchlist: hasWatchlist ? read('user_watchlist') : [], users: read('users'), settings: read('settings'), giveaways: read('giveaways'), entries: read('giveaway_entries'), notifications: read('notifications'), outbox: read('email_outbox') };
     source.exec('COMMIT');
     return data;
   } finally { source.close(); }
@@ -20,9 +21,11 @@ async function readSqlite(file) {
 function toMongo(data) {
   const counts = new Map();
   for (const entry of data.entries) counts.set(entry.giveaway_id, (counts.get(entry.giveaway_id) || 0) + 1);
+  const lists = new Map();
+  for (const { user_id, symbol } of (data.watchlist || [])) { if (!lists.has(user_id)) lists.set(user_id, []); lists.get(user_id).push(symbol); }
   const settings = Object.fromEntries(data.settings.map(s => [s.key, s.value]));
   return {
-    users: data.users.map(({ id, ...row }) => ({ _id: id, ...row })),
+    users: data.users.map(({ id, ...row }) => ({ _id: id, ...row, ...(lists.has(id) ? { watchlist:lists.get(id) } : {}) })),
     settings: [{ _id: 'workspace', supportEmail: settings.support_email || '', notificationEmail: settings.notification_email || '' }],
     giveaways: data.giveaways.map(({ id, ...row }) => ({ _id: id, ...row, entry_count: counts.get(id) || 0 })),
     giveaway_entries: data.entries,
