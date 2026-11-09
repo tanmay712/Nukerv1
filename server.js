@@ -91,7 +91,7 @@ app.get('/api/admin', requireUser, requireOwner, (_req, res) => {
   const users = db.prepare('SELECT provider, name, email, created_at, last_login FROM users ORDER BY last_login DESC LIMIT 100').all();
   const settings = db.prepare("SELECT value FROM settings WHERE key = 'support_email'").get();
   const notifications = db.prepare("SELECT value FROM settings WHERE key = 'notification_email'").get();
-  res.json({ users, supportEmail: settings?.value || '', notificationEmail: notifications?.value || '', mailConfigured: mail.mailConfigured(), primeConfigured: primeConfigured(), primeAssetsConfigured: primeAssetsConfigured() });
+  res.json({ users, supportEmail: settings?.value || '', notificationEmail: notifications?.value || '', mailConfigured: mail.mailConfigured(), tatumConfigured: Boolean(process.env.TATUM_API_KEY), primeConfigured: primeConfigured(), primeAssetsConfigured: primeAssetsConfigured() });
 });
 app.post('/api/admin/settings', requireUser, requireOwner, csrf, (req, res) => {
   const supportEmail = typeof req.body?.supportEmail === 'string' ? req.body.supportEmail.trim() : '';
@@ -111,6 +111,24 @@ app.post('/api/admin/email/test', requireUser, requireOwner, csrf, emailLimiter,
   try { await mail.sendMail(email, 'Cryply email test', 'Your Cryply SMTP connection accepted this test message.\n'); res.json({ ok: true }); }
   catch (_) { console.error('SMTP test email failed.'); res.status(502).json({ error: 'Email delivery failed. Check the SMTP configuration.' }); }
 });
+// This diagnostic only checks an RPC connection; it never creates wallets or moves funds.
+const tatumCheckLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
+app.post('/api/admin/tatum/check', requireUser, requireOwner, csrf, tatumCheckLimiter, async (_req, res) => {
+  if (!process.env.TATUM_API_KEY) return res.status(503).json({ error: 'Tatum API key is not configured.' });
+  try {
+    const response = await fetch('https://solana-devnet.gateway.tatum.io/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.TATUM_API_KEY },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getHealth' }),
+      signal: AbortSignal.timeout(10000), redirect: 'error',
+    });
+    if (!response.ok) throw new Error('RPC unavailable');
+    const data = await response.json();
+    if (data.jsonrpc !== '2.0' || data.id !== 1 || data.result !== 'ok' || data.error) throw new Error('Unexpected RPC response');
+    res.json({ ok: true, network: 'Solana devnet' });
+  } catch (_) { res.status(502).json({ error: 'Tatum test connection failed. Check the server key, plan and provider status.' }); }
+});
+
 const isPrimeId = (value) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value || '');
 function primeAuthConfigured() { return Boolean(process.env.COINBASE_PRIME_ACCESS_KEY && process.env.COINBASE_PRIME_SIGNING_KEY && process.env.COINBASE_PRIME_PASSPHRASE); }
 function primeConfigured() { return primeAuthConfigured() && isPrimeId(process.env.COINBASE_PRIME_PORTFOLIO_ID); }

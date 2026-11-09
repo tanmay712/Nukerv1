@@ -58,3 +58,11 @@ test('public pages and deployment examples use Cryply branding and domain', () =
     assert.doesNotMatch(text, /crypto\.definescloud\.site/);
   }
 });
+
+test('owner panel shows the test-only Tatum connection without promising live wallets', () => {
+  const html = publicFile('index.html');
+  assert.match(html, /id="checkTatum"[^>]*disabled/);
+  assert.match(html, /Individual wallets are in development/);
+  assert.doesNotMatch(html, /id="loadPrime"/);
+  assert.match(publicFile('app.js'), /\/api\/admin\/tatum\/check/);
+});
