@@ -279,3 +279,20 @@ test('Tatum check uses a fixed devnet RPC and never exposes provider credentials
     }
   } finally { global.fetch = original; delete process.env.TATUM_API_KEY; }
 });
+
+test('watchlist is account-scoped, persistent, idempotent and CSRF-protected', async () => {
+  const alice = login('google', 'watch-alice');
+  const bob = login('google', 'watch-bob');
+  const token = 'a'.repeat(64);
+  assert.equal((await request(app).get('/api/watchlist')).status, 401);
+  assert.equal((await request(app).post('/api/watchlist/SOL').set('Cookie', alice).send({saved:true})).status, 403);
+  assert.equal((await request(app).post('/api/watchlist/FAKE').set('Cookie', alice).set('x-csrf-token', token).send({saved:true})).status, 400);
+  assert.equal((await request(app).post('/api/watchlist/SOL').set('Cookie', alice).set('x-csrf-token', token).send({saved:'true'})).status, 400);
+  const save = () => request(app).post('/api/watchlist/SOL').set('Cookie', alice).set('x-csrf-token', token).send({saved:true});
+  assert.deepEqual((await Promise.all([save(), save()])).map(result => result.status), [200,200]);
+  assert.deepEqual((await request(app).get('/api/watchlist').set('Cookie', alice)).body.assets, ['SOL']);
+  assert.deepEqual((await request(app).get('/api/watchlist').set('Cookie', bob)).body.assets, []);
+  assert.equal((await request(app).post('/api/watchlist/SOL').set('Cookie', alice).set('x-csrf-token', token).send({saved:false})).status, 200);
+  assert.deepEqual((await request(app).get('/api/watchlist').set('Cookie', alice)).body.assets, []);
+  for (const route of ['/trade','/swap','/invest']) assert.equal((await request(app).get(route)).status, 200);
+});

@@ -32,6 +32,35 @@ test('MongoDB real integration: session persistence, access, atomic giveaways, a
     const alice = await login('google', 'alice', 'alice@example.test');
     const bob = await login('google', 'bob', 'bob@example.test');
     const csrf = 'a'.repeat(64);
+    assert.equal((await request(app).post('/api/devnet/solana/balance').send({ address:'1'.repeat(32) })).status, 401);
+    assert.equal((await request(app).post('/api/devnet/solana/balance').set('Cookie', alice).send({ address:'1'.repeat(32) })).status, 403);
+    assert.equal((await request(app).post('/api/devnet/solana/balance').set('Cookie', alice).set('x-csrf-token', csrf).send({ address:'bad' })).status, 400);
+    assert.equal((await request(app).get('/api/devnet/wallet/status')).status, 401);
+    assert.equal((await request(app).post('/api/devnet/wallet/session').set('Cookie', alice).send({})).status, 403);
+    const previousFlag = process.env.ENABLE_EXPERIMENTAL_TATUM_DEVNET, previousTatum = process.env.TATUM_API_KEY;
+    try {
+      process.env.ENABLE_EXPERIMENTAL_TATUM_DEVNET = '1'; process.env.TATUM_API_KEY = 'test';
+      await db.collection('tatum_wallet_clients').insertOne({ _id:'google:alice', state:'needs_review' });
+      assert.equal((await request(app).get('/api/devnet/wallet/status').set('Cookie', alice)).body.state, 'needs_review');
+      assert.equal((await request(app).get('/api/devnet/wallet/status').set('Cookie', bob)).body.state, 'new');
+      assert.equal((await request(app).post('/api/devnet/wallet/session').set('Cookie', alice).set('x-csrf-token', csrf).send({})).status, 409);
+      await db.collection('tatum_wallet_clients').insertOne({ _id:'google:bob', state:'ready', clientId:'mock-client' });
+      const claim = () => request(app).post('/api/devnet/wallet/begin').set('Cookie', bob).set('x-csrf-token', csrf).send({});
+      assert.deepEqual((await Promise.all([claim(), claim()])).map(response => response.status).sort(), [200,409]);
+    } finally {
+      if (previousFlag === undefined) delete process.env.ENABLE_EXPERIMENTAL_TATUM_DEVNET; else process.env.ENABLE_EXPERIMENTAL_TATUM_DEVNET = previousFlag;
+      if (previousTatum === undefined) delete process.env.TATUM_API_KEY; else process.env.TATUM_API_KEY = previousTatum;
+    }
+    assert.equal((await request(app).get('/api/watchlist')).status, 401);
+    assert.equal((await request(app).post('/api/watchlist/SOL').set('Cookie', alice).send({ saved:true })).status, 403);
+    const watch = (cookie, symbol, saved) => request(app).post(`/api/watchlist/${symbol}`).set('Cookie', cookie).set('x-csrf-token', csrf).send({saved});
+    assert.equal((await watch(alice, 'FAKE', true)).status, 400);
+    assert.deepEqual((await Promise.all([watch(alice, 'SOL', true), watch(alice, 'LTC', true), watch(alice, 'SOL', true)])).map(r => r.status), [200,200,200]);
+    assert.deepEqual((await request(app).get('/api/watchlist').set('Cookie', alice)).body.assets, ['SOL','LTC']);
+    assert.deepEqual((await request(app).get('/api/watchlist').set('Cookie', bob)).body.assets, []);
+    assert.equal((await watch(alice, 'SOL', false)).status, 200);
+    assert.deepEqual((await request(app).get('/api/watchlist').set('Cookie', alice)).body.assets, ['LTC']);
+    for (const route of ['/trade','/swap','/invest']) assert.equal((await request(app).get(route)).status, 200);
     assert.equal((await request(app).get('/api/admin')).status, 401);
     assert.equal((await request(app).get('/api/admin').set('Cookie', alice)).status, 403);
     assert.equal((await request(app).get('/api/session').set('Cookie', owner)).body.user.owner, true);
