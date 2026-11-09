@@ -22,3 +22,10 @@
 
 /* The artwork follows the neutral interface palette. */
 .hero-visual img,.auth-art img{filter:grayscale(1)}
+
+/* Keep the public site calm: no floating artwork or scroll-triggered entrances. */
+html{scroll-behavior:auto}
+.hero-entry,.hero-visual img,.auth-art img,.reward-small,.cta-art span,.auth-story>.overline,.auth-story>h1,.auth-story>p,.auth-art,.auth-story-bottom,.auth-card{animation:none}
+.reveal,.reveal.will-reveal,.reveal.will-reveal.visible{opacity:1;transform:none;transition:none}
+.pill-button:hover,.round-link:hover{transform:none}
+.feature-main:hover .mini-dashboard{transform:rotate(-3deg)}

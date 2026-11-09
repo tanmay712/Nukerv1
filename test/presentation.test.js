@@ -35,3 +35,26 @@ test('interface palette is neutral apart from provider branding and error messag
   }
   assert.match(publicFile('website.css'), /\.hero-visual img,\.auth-art img\s*\{filter:grayscale\(1\)\}/);
 });
+
+test('wallet overview presents unavailable services without fictional balances', () => {
+  const html = publicFile('index.html');
+  assert.match(html, /class="wallet-value">Unavailable/);
+  assert.match(html, /<button class="quick-action" type="button" disabled>/);
+  assert.match(html, /<table class="asset-table">/);
+  assert.match(html, /Network availability has not been confirmed/);
+  assert.match(html, /id="notifications"/);
+  assert.doesNotMatch(publicFile('website.js'), /IntersectionObserver/);
+});
+
+test('public pages and deployment examples use Cryply branding and domain', () => {
+  for (const file of ['landing.html', 'auth.html', 'index.html', 'auth.js', 'app.js']) {
+    const text = publicFile(file);
+    assert.doesNotMatch(text, /cryptly/i, `${file} still has the old brand`);
+    if (file !== 'app.js') assert.match(text, /cryply/i, `${file} should use the Cryply name`);
+  }
+  for (const file of ['.env.example', 'Caddyfile.example', 'README.md']) {
+    const text = readFileSync(path.join(__dirname, '..', file), 'utf8');
+    assert.match(text, /cryply\.xyz/);
+    assert.doesNotMatch(text, /crypto\.definescloud\.site/);
+  }
+});

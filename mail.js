@@ -23,8 +23,8 @@ async function notifyLogin(user, ownerEmail) {
   if (!mailConfigured()) return;
   const date = new Date().toUTCString();
   const tasks = [];
-  if (isEmail(user.email)) tasks.push(sendMail(user.email, 'New sign-in to your Cryptly account', `A sign-in to your Cryptly account using ${user.provider} was completed on ${date}.\n\nIf this was not you, secure your sign-in provider account immediately.\n`));
-  if (isEmail(ownerEmail)) tasks.push(sendMail(ownerEmail, 'Cryptly account sign-in', `A Cryptly account signed in using ${user.provider} on ${date}.\n\nThis is an owner notification.\n`));
+  if (isEmail(user.email)) tasks.push(sendMail(user.email, 'New sign-in to your Cryply account', `A sign-in to your Cryply account using ${user.provider} was completed on ${date}.\n\nIf this was not you, secure your sign-in provider account immediately.\n`));
+  if (isEmail(ownerEmail)) tasks.push(sendMail(ownerEmail, 'Cryply account sign-in', `A Cryply account signed in using ${user.provider} on ${date}.\n\nThis is an owner notification.\n`));
   const results = await Promise.allSettled(tasks);
   if (results.some((result) => result.status === 'rejected')) console.error('One or more sign-in notification emails could not be sent.');
 }

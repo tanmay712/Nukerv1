@@ -2,10 +2,10 @@ const $ = (id) => document.getElementById(id);
 const signup = location.pathname.replace(/\/$/, '') === '/signup';
 $('authTitle').textContent = signup ? 'Make yourself at home.' : 'Welcome back.';
 $('authSubtitle').textContent = signup ? 'Create your account to get started.' : 'Sign in to pick up where you left off.';
-$('switchText').textContent = signup ? 'Already have an account?' : 'New to Cryptly?';
+$('switchText').textContent = signup ? 'Already have an account?' : 'New to Cryply?';
 $('switchLink').textContent = signup ? 'Log in' : 'Create an account';
 $('switchLink').href = signup ? '/signin' : '/signup';
-document.title = `${signup ? 'Get started' : 'Log in'} | Cryptly`;
+document.title = `${signup ? 'Get started' : 'Log in'} | Cryply`;
 if (new URLSearchParams(location.search).has('login')) { $('authError').textContent = 'Sign-in could not be completed. Please try again.'; $('authError').classList.remove('hidden'); }
 fetch('/api/session', { credentials: 'same-origin' }).then((response) => { if (!response.ok) throw new Error('Unavailable'); return response.json(); }).then((session) => {
   if (session.user) { $('accountActions').classList.add('hidden'); $('signedIn').classList.remove('hidden'); return; }
