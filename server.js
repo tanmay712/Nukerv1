@@ -108,7 +108,7 @@ app.post('/api/admin/email/test', requireUser, requireOwner, csrf, emailLimiter,
   const email = db.prepare("SELECT value FROM settings WHERE key = 'notification_email'").get()?.value;
   if (!mail.mailConfigured()) return res.status(503).json({ error: 'SMTP is not configured.' });
   if (!mail.isEmail(email)) return res.status(400).json({ error: 'Save an owner notification email first.' });
-  try { await mail.sendMail(email, 'Cryptly email test', 'Your Cryptly SMTP connection accepted this test message.\n'); res.json({ ok: true }); }
+  try { await mail.sendMail(email, 'Cryply email test', 'Your Cryply SMTP connection accepted this test message.\n'); res.json({ ok: true }); }
   catch (_) { console.error('SMTP test email failed.'); res.status(502).json({ error: 'Email delivery failed. Check the SMTP configuration.' }); }
 });
 const isPrimeId = (value) => /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value || '');
@@ -217,7 +217,7 @@ app.post('/api/admin/giveaways/:id/draw', requireUser, requireOwner, csrf, givea
     const message = `You were selected for ${giveaway.title}: ${giveaway.prize} LTC. Prize fulfillment is pending; no payment has been sent.`;
     db.prepare("UPDATE giveaways SET state = 'drawn', winner_id = ? WHERE id = ?").run(winner.id, giveaway.id);
     db.prepare('INSERT INTO notifications (id, user_id, message, created_at) VALUES (?, ?, ?, ?)').run(crypto.randomUUID(), winner.id, message, Date.now());
-    if (mail.isEmail(winner.email)) { db.prepare('INSERT INTO email_outbox (id, recipient, subject, body, next_attempt, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), winner.email, 'Cryptly giveaway result', `${message}\n\nSign in to your dashboard for details.\n`, Date.now(), Date.now()); emailQueued = true; }
+    if (mail.isEmail(winner.email)) { db.prepare('INSERT INTO email_outbox (id, recipient, subject, body, next_attempt, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), winner.email, 'Cryply giveaway result', `${message}\n\nSign in to your dashboard for details.\n`, Date.now(), Date.now()); emailQueued = true; }
     db.exec('COMMIT');
   } catch (error) { try { db.exec('ROLLBACK'); } catch (_) {} return next(error); }
   if (emailQueued) processEmailQueue().catch(() => console.error('Giveaway email queue failed.'));
@@ -255,7 +255,7 @@ app.use((err, _req, res, _next) => { console.error('Request failed:', err.messag
 if (require.main === module) {
   const port = Number(process.env.PORT || 6546);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be an integer between 1 and 65535');
-  app.listen(port, '0.0.0.0', () => console.log(`Cryptly listening on port ${port}`));
+  app.listen(port, '0.0.0.0', () => console.log(`Cryply listening on port ${port}`));
   processEmailQueue().catch(() => console.error('Giveaway email queue failed.'));
   setInterval(() => processEmailQueue().catch(() => console.error('Giveaway email queue failed.')), 60000).unref();
 }
