@@ -22,18 +22,19 @@ test('website and dashboard motion respects reduced-motion preferences', () => {
   }
 });
 
-test('interface palette is neutral apart from provider branding and error messaging', () => {
-  const exceptions = new Set(['4285f4', '5865f2', 'fff3ee', 'aa6e57']);
-  for (const file of ['website.css', 'style.css']) {
-    const css = publicFile(file);
-    for (const [, color] of css.matchAll(/#([0-9a-f]{6})(?:[0-9a-f]{2})?\b/gi)) {
-      const rgb = color.toLowerCase();
-      if (exceptions.has(rgb)) continue;
-      assert.equal(rgb.slice(0, 2), rgb.slice(2, 4), `${file}: #${rgb} is not neutral`);
-      assert.equal(rgb.slice(2, 4), rgb.slice(4, 6), `${file}: #${rgb} is not neutral`);
-    }
+test('landing page uses its dimensional mint palette while the app stays neutral', () => {
+  const appCss = publicFile('style.css');
+  const appPaletteExceptions = new Set(['4285f4', '5865f2', 'fff3ee', 'aa6e57']);
+  for (const [, color] of appCss.matchAll(/#([0-9a-f]{6})(?:[0-9a-f]{2})?\b/gi)) {
+    const rgb = color.toLowerCase();
+    if (appPaletteExceptions.has(rgb)) continue;
+    assert.equal(rgb.slice(0, 2), rgb.slice(2, 4), `style.css: #${rgb} is not neutral`);
+    assert.equal(rgb.slice(2, 4), rgb.slice(4, 6), `style.css: #${rgb} is not neutral`);
   }
-  assert.match(publicFile('website.css'), /\.hero-visual img,\.auth-art img\s*\{filter:grayscale\(1\)\}/);
+  const websiteCss = publicFile('website.css');
+  assert.match(websiteCss, /--mint:#b7f3df/);
+  assert.match(websiteCss, /rotateX\(var\(--tilt-x/);
+  assert.match(websiteCss, /radial-gradient\(240px circle at var\(--pointer-x/);
 });
 
 test('wallet overview presents unavailable services without fictional balances', () => {
@@ -57,6 +58,17 @@ test('public pages and deployment examples use Cryply branding and domain', () =
     assert.match(text, /cryply\.xyz/);
     assert.doesNotMatch(text, /crypto\.definescloud\.site/);
   }
+});
+
+test('Solana mainnet deposit watcher is opt-in and receive-only', () => {
+  const env = readFileSync(path.join(__dirname, '..', '.env.example'), 'utf8');
+  const backend = readFileSync(path.join(__dirname, '..', 'solana-mainnet-deposits.js'), 'utf8');
+  const client = readFileSync(path.join(__dirname, '..', 'wallet-prototype', 'mainnet-browser.mjs'), 'utf8');
+  assert.match(env, /ENABLE_TATUM_MAINNET_DEPOSITS=0/);
+  assert.match(backend, /commitment: 'finalized'/);
+  assert.match(backend, /state: 'finalized'/);
+  assert.doesNotMatch(backend + client, /sendAssets|sendTransaction/);
+  assert.match(publicFile('index.html'), /does not add deposits to a Cryply balance or provide withdrawals/);
 });
 
 test('owner panel shows the test-only Tatum connection without promising live wallets', () => {
