@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "build:wallet": "esbuild wallet-prototype/browser.mjs --bundle --platform=browser --format=iife --minify --outfile=public/wallet-client.js"
+    "build:wallet": "esbuild wallet-prototype/browser.mjs --bundle --platform=browser --format=iife --minify --outfile=public/wallet-client.js && esbuild wallet-prototype/mainnet-browser.mjs --bundle --platform=browser --format=iife --minify --outfile=public/mainnet-wallet-client.js"
   },
   "dependencies": {
     "@tatumio/wallet-sdk": "0.7.1",

@@ -11,6 +11,7 @@ const { saveMongoUser, getMongoUser } = require('./mongo-foundation');
 const { registerGiveawayRoutes } = require('./mongo-giveaways');
 const { registerSolanaDevnetRoutes } = require('./solana-devnet');
 const { registerTatumWalletSessionRoutes } = require('./tatum-wallet-sessions');
+const { registerSolanaMainnetDepositRoutes } = require('./solana-mainnet-deposits');
 const { registerWatchlistRoutes } = require('./watchlist');
 const path = require('node:path');
 const mail = require('./mail');
@@ -29,7 +30,7 @@ const secret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('he
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not configured; development sessions will reset on restart.');
 if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 app.disable('x-powered-by');
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'"], imgSrc: ["'self'", 'data:'], connectSrc: ["'self'", ...(process.env.ENABLE_EXPERIMENTAL_TATUM_DEVNET === '1' ? ["https://api.portalhq.io", "https://mpc-client.portalhq.io"] : [])], objectSrc: ["'none'"], baseUri: ["'self'"], frameAncestors: ["'none'"] } } }));
+app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'"], imgSrc: ["'self'", 'data:'], connectSrc: ["'self'", ...((process.env.ENABLE_EXPERIMENTAL_TATUM_DEVNET === '1' || process.env.ENABLE_TATUM_MAINNET_DEPOSITS === '1' || process.env.ENABLE_TATUM_SOLANA_MAINNET_DEPOSITS === '1') ? ["https://api.portalhq.io", "https://mpc-client.portalhq.io"] : [])], objectSrc: ["'none'"], baseUri: ["'self'"], frameAncestors: ["'none'"] } } }));
 app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use(express.json({ limit: '8kb' }));
 
@@ -38,6 +39,11 @@ const giveaways = db.collection('giveaways');
 const entries = db.collection('giveaway_entries');
 const notifications = db.collection('notifications');
 const outbox = db.collection('email_outbox');
+const mainnetWallets = db.collection('tatum_mainnet_wallets');
+const mainnetDeposits = db.collection('mainnet_deposits');
+await mainnetWallets.createIndex({ state: 1, 'addresses.solana': 1 });
+await mainnetDeposits.createIndex({ chain: 1, address: 1, tx_hash: 1, transfer_index: 1 }, { unique: true });
+await mainnetDeposits.createIndex({ user_id: 1, block_time: -1, block_height: -1 });
 await entries.createIndex({ giveaway_id: 1, user_id: 1 }, { unique: true });
 await giveaways.createIndex({ created_at: -1 });
 await notifications.createIndex({ user_id: 1, created_at: -1 });
@@ -103,6 +109,7 @@ registerWatchlistRoutes({ app, requireUser, csrf,
 });
 registerSolanaDevnetRoutes({ app, requireUser, csrf });
 registerTatumWalletSessionRoutes({ app, collection: db.collection('tatum_wallet_clients'), requireUser, csrf });
+const mainnetDepositsWorker = registerSolanaMainnetDepositRoutes({ app, wallets: mainnetWallets, deposits: mainnetDeposits, requireUser, csrf });
 
 // This diagnostic only checks an RPC connection; it never creates wallets or moves funds.
 const tatumCheckLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
@@ -176,6 +183,6 @@ for (const route of ['/signin', '/signup']) app.get(route, (_req, res) => res.se
 for (const route of ['/dashboard', '/withdraw', '/giveaways', '/buy', '/owner', '/trade', '/swap', '/invest']) app.get(route, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], index: 'index.html', dotfiles: 'deny' }));
 app.use((err, _req, res, _next) => { console.error('Request failed.'); res.status(500).json({ error: 'Request failed.' }); });
-return { app, processEmailQueue };
+return { app, processEmailQueue, processMainnetDeposits: mainnetDepositsWorker.processDeposits };
 }
 module.exports = { createMongoApp };

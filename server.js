@@ -9,12 +9,14 @@ async function startMongo() {
     // Transactions protect giveaway entries, draws, and notifications from partial writes.
     const hello = await connection.client.db('admin').command({ hello: 1 });
     if (!hello.setName && hello.msg !== 'isdbgrid') throw new Error('MongoDB must support replica-set transactions');
-    const { app, processEmailQueue } = await createMongoApp(connection);
+    const { app, processEmailQueue, processMainnetDeposits } = await createMongoApp(connection);
     const port = Number(process.env.PORT || 6546);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be an integer between 1 and 65535');
     app.listen(port, '0.0.0.0', () => console.log(`Cryply listening on port ${port}`));
     processEmailQueue().catch(() => console.error('Giveaway email queue failed.'));
     setInterval(() => processEmailQueue().catch(() => console.error('Giveaway email queue failed.')), 60000).unref();
+    processMainnetDeposits().catch(() => console.error('Solana mainnet deposit scan failed.'));
+    setInterval(() => processMainnetDeposits().catch(() => console.error('Solana mainnet deposit scan failed.')), 60000).unref();
   } catch (error) {
     await connection.client.close();
     throw error;
